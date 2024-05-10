@@ -4,5 +4,5 @@ Handlers.add(
   Handlers.utils.hasMatchingTag("Action", "Announcement"),
   function (msg)
     print(msg.Event .. ": " .. msg.Data)
-  end
+ os  end
 )
