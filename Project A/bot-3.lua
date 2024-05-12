@@ -1,174 +1,171 @@
--- Initializing global variables
-local LatestGameState = LatestGameState or nil
-local Game = "oPre75iYJzWPiNkk_7B6QwmDPBSJIn9Rqrvil1Gho7U"
-local CRED = "Sa0iBLPNyJQrwpTTG-tWLQU-1QeUAJA73DdxGGiKoJc"
-local InAction = false
-local BeingAttacked = false
+-- Initializing global variables to store the latest game state and game host process.
+local WorldState = WorldState or nil
+local Mana = Mana or "Sa0iBLPNyJQrwpTTG-tWLQU-1QeUAJA73DdxGGiKoJc"
+local BattleCount = BattleCount or 0
 
-local function distance(x1, y1, x2, y2)
-    return math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+-- Define colors for console output
+local Colors = {
+    crimson = "\27[31m",
+    emerald = "\27[32m",
+    sapphire = "\27[34m",
+    reset = "\27[0m",
+}
+
+-- Checks if two points are within a given range.
+function isWithinRange(x1, y1, x2, y2, range)
+    return math.sqrt((x1 - x2) ^ 2 + (y1 - y2) ^ 2) <= range
 end
 
-local function inRange(x1, y1, x2, y2, range)
-    return distance(x1, y1, x2, y2) <= range
-end
+-- Finds the closest foe to the hero.
+function findClosestFoe(hero)
+    local closestFoe = nil
+    local minDistance = math.huge
 
-local function getDirections(x1, y1, x2, y2)
-    local dx, dy = x2 - x1, y2 - y1
-    local dirX, dirY = "", ""
-    if dx > 0 then dirX = "Right" else dirX = "Left" end
-    if dy > 0 then dirY = "Down" else dirY = "Up" end
-    return dirX, dirY
-end
-
-local function randomDirection()
-    local directions = { "Up", "Down", "Left", "Right" }
-    return directions[math.random(1, #directions)]
-end
-
--- Game state analysis
-local function analyzeGameState()
-    local player = LatestGameState.Players[ao.id]
-    local targets = {}
-
-    for id, state in pairs(LatestGameState.Players) do
-        if id ~= ao.id then
-            local dist = distance(player.x, player.y, state.x, state.y)
-            table.insert(targets, { id = id, state = state, dist = dist })
-        end
-    end
-
-    table.sort(targets, function(a, b) return a.dist < b.dist end)
-    return targets
-end
-
--- Strategy decision-making
-local function decideBestStrategy()
-    local player = LatestGameState.Players[ao.id]
-    local targets = analyzeGameState()
-
-    -- Attack the nearest target with lower health if within range
-    for _, target in ipairs(targets) do
-        if inRange(player.x, player.y, target.state.x, target.state.y, 1) and
-            player.energy > target.state.energy then
-            return "attack", target.id
-        end
-    end
-
-    -- If being attacked and low on health, retreat from the attacker
-    if player.health < 20 and BeingAttacked then
-        local retreatDir
-        for _, target in ipairs(targets) do
-            if target.dist <= 2 then
-                retreatDir = getDirections(target.state.x, target.state.y, player.x, player.y)
-                break
-            end
-        end
-        return "retreat", retreatDir
-    end
-
-    -- Move towards the nearest target with higher energy
-    local strongestTarget = nil
-    for _, target in ipairs(targets) do
-        if not strongestTarget or target.state.energy > strongestTarget.state.energy then
-            strongestTarget = target
-        end
-    end
-    if strongestTarget then
-        local moveDir = getDirections(player.x, player.y, strongestTarget.state.x, strongestTarget.state.y)
-        return "move", table.concat(moveDir, "")
-    end
-
-    -- No targets, move randomly
-    return "random"
-end
-
--- Function to decide the next action
-function decideNextAction()
-    local player = LatestGameState.Players[ao.id]
-    local playerEnergy = player.energy
-    local playerX = player.x
-    local playerY = player.y
-
-    -- Check if the bot's energy is less than or equal to 20
-    if playerEnergy <= 20 then
-        print("Bot's energy is less than or equal to 20.")
-    end
-
-    -- Check for weak enemies with energy less than 10 and at coordinates >=3
-    for id, opponent in pairs(LatestGameState.Players) do
-        if id ~= ao.id then
-            if opponent.energy < 10 and opponent.x >= 3 then
-                print("Weak enemy detected at coordinates: " .. opponent.x .. ", " .. opponent.y)
-                -- Bot moves closer and attacks the weak enemy
-                local deltaX = opponent.x - playerX
-                local deltaY = opponent.y - playerY
-                if math.abs(deltaX) > math.abs(deltaY) then
-                    if deltaX > 0 then
-                        print("Moving right")
-                    else
-                        print("Moving left")
-                    end
-                else
-                    if deltaY > 0 then
-                        print("Moving down")
-                    else
-                        print("Moving up")
-                    end
-                end
-                print("Attacking the weak enemy.")
-                return
+    for foe, state in pairs(WorldState.Players) do
+        if foe ~= hero.id then
+            local dist = math.sqrt((hero.x - state.x) ^ 2 + (hero.y - state.y) ^ 2)
+            if dist < minDistance then
+                minDistance = dist
+                closestFoe = state
             end
         end
     end
+
+    return closestFoe
 end
 
--- Event handlers
-Handlers.add("UpdateGameState", Handlers.utils.hasMatchingTag("Action", "GameState"), function(msg)
-    local json = require("json")
-    LatestGameState = json.decode(msg.Data)
-    decideNextAction()
-end)
+-- Decides the next action based on hero's health, mana levels, and foe positions.
+function decideNextMove()
+    local hero = WorldState.Players[ao.id]
+    local foeInRange = false
 
-Handlers.add("ReturnAttack", Handlers.utils.hasMatchingTag("Action", "Hit"), function(msg)
-    BeingAttacked = true
-    decideBestStrategy()
-end)
-
-Handlers.add("PrintAnnouncements", Handlers.utils.hasMatchingTag("Action", "Announcement"), function(msg)
-    if msg.Event == "Started-Waiting-Period" then
-        ao.send({
-            Target = ao.id,
-            Action = "AutoPay"
-        })
-    elseif (msg.Event == "Tick" or msg.Event == "Started-Game") and not InAction then
-        InAction = true
-        ao.send({ Target = Game, Action = "GetGameState" })
-    elseif InAction then
-        print("[PrintAnnouncements]Previous action still in progress. Skipping.")
+    -- Check if any foe is within attack range
+    for foe, state in pairs(WorldState.Players) do
+        if foe ~= ao.id and isWithinRange(hero.x, hero.y, state.x, state.y, 1) then
+            foeInRange = true
+            break
+        end
     end
-    print(colors.green .. msg.Event .. ": " .. msg.Data .. colors.reset)
-end)
 
-Handlers.add("GetGameStateOnTick", Handlers.utils.hasMatchingTag("Action", "Tick"), function()
-    if not InAction then
-        InAction = true
-        print(colors.gray .. "Getting game state..." .. colors.reset)
-        ao.send({ Target = Game, Action = "GetGameState" })
+    if foeInRange then
+        -- Attack if a foe is nearby
+        print(Colors.crimson .. "Foe in range. Attacking..." .. Colors.reset)
+        ao.send({ Target = "Game", Action = "PlayerAttack", AttackEnergy = tostring(hero.energy) })
     else
-        print("[GetGameStateOnTick]Previous action still in progress. Skipping.")
+        -- Move strategically based on health and foe positions
+        local moveDir = makeStrategicMove(hero)
+        print(Colors.sapphire .. "Moving strategically in direction: " .. moveDir .. Colors.reset)
+        ao.send({ Target = "Game", Action = "PlayerMove", Direction = moveDir })
     end
-end)
+end
 
-Handlers.add("AutoPay", Handlers.utils.hasMatchingTag("Action", "AutoPay"), function(msg)
-    print("Auto-paying confirmation fees.")
-    ao.send({ Target = Game, Action = "Transfer", Recipient = Game, Quantity = "1000" })
-end)
+-- Makes a strategic move decision based on foe positions, energy levels, and health.
+function makeStrategicMove(hero)
+    -- If health is low, move away from the closest foe; otherwise, move towards the predicted future position of the foe
+    local closestFoe = findClosestFoe(hero)
+    local moveDir = ""
 
-Handlers.add("Respawn", Handlers.utils.hasMatchingTag("Action", "Eliminated"), function(msg)
-    print("Eliminated! " .. "Playing again!")
-    ao.send({ Target = CRED, Action = "Transfer", Quantity = "1000", Recipient = Game })
-end)
+    if hero.health < 30 then
+        -- If health is low, move away from the closest foe
+        moveDir = getOppositeDirection(hero.x, hero.y, closestFoe.x, closestFoe.y)
+    elseif hero.energy > 50 then
+        -- If energy is high, move towards the predicted future position of the foe
+        moveDir = predictFoeMovement(hero, closestFoe)
+    else
+        -- If health and energy are moderate, gather resources
+        moveDir = gatherResources(hero)
+    end
 
--- Initial action to register with the game
-Send({ Target = Game, Action = "Register" })
+    return moveDir
+end
+
+-- Predicts the future movement of the closest foe.
+function predictFoeMovement(hero, foe)
+    -- Example: Move towards the predicted future position of the foe
+    -- This can be implemented using various prediction algorithms, such as Kalman filters or simple linear extrapolation.
+    -- For simplicity, we assume the foe moves in a straight line.
+    local dx = foe.x - hero.x
+    local dy = foe.y - hero.y
+
+    if math.abs(dx) > math.abs(dy) then
+        return dx > 0 and "Right" or "Left"
+    else
+        return dy > 0 and "Down" or "Up"
+    end
+end
+
+-- Returns the opposite direction of the given direction.
+function getOppositeDirection(x1, y1, x2, y2)
+    local dx = x2 - x1
+    local dy = y2 - y1
+
+    if math.abs(dx) > math.abs(dy) then
+        return dx > 0 and "Left" or "Right"
+    else
+        return dy > 0 and "Up" or "Down"
+    end
+end
+
+-- Moves towards the nearest resource to gather it.
+function gatherResources(hero)
+    local nearestResource = nil
+    local minDistance = math.huge
+
+    for _, resource in pairs(WorldState.Resources) do
+        local dist = math.sqrt((hero.x - resource.x) ^ 2 + (hero.y - resource.y) ^ 2)
+        if dist < minDistance then
+            minDistance = dist
+            nearestResource = resource
+        end
+    end
+
+    if nearestResource then
+        local dx = nearestResource.x - hero.x
+        local dy = nearestResource.y - hero.y
+
+        if math.abs(dx) > math.abs(dy) then
+            return dx > 0 and "Right" or "Left"
+        else
+            return dy > 0 and "Down" or "Up"
+        end
+    else
+        -- No resources found, move randomly
+        local directionMap = { "Up", "Down", "Left", "Right", "UpRight", "UpLeft", "DownRight", "DownLeft" }
+        local randomIndex = math.random(#directionMap)
+        return directionMap[randomIndex]
+    end
+end
+
+-- Handlers to update game state and trigger actions.
+Handlers.add(
+    "UpdateWorldState",
+    Handlers.utils.hasMatchingTag("Action", "WorldState"),
+    function(msg)
+        local json = require("json")
+        WorldState = json.decode(msg.Data)
+        decideNextMove() -- Make a decision based on the updated game state
+    end
+)
+
+Handlers.add(
+    "ReturnAttack",
+    Handlers.utils.hasMatchingTag("Action", "Hit"),
+    function(msg)
+        decideNextMove() -- Make a decision after being attacked
+    end
+)
+
+Handlers.add(
+    "PrintAnnouncements",
+    Handlers.utils.hasMatchingTag("Action", "Announcement"),
+    function(msg)
+        -- Print game announcements
+        print(Colors.emerald .. msg.Event .. ": " .. msg.Data .. Colors.reset)
+    end
+)
+
+-- Start the game by retrieving the initial game state
+ao.send({ Target = "Game", Action = "GetWorldState" })
+
+local CharacterName = "0xGery"
+Prompt = function() return CharacterName .. "> " end
