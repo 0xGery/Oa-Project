@@ -81,11 +81,22 @@ end
 
 -- Predicts the future movement of the closest foe.
 function predictFoeMovement(hero, foe)
-    -- Example: Move towards the predicted future position of the foe
-    -- This can be implemented using various prediction algorithms, such as Kalman filters or simple linear extrapolation.
-    -- For simplicity, we assume the foe moves in a straight line.
-    local dx = foe.x - hero.x
-    local dy = foe.y - hero.y
+    -- Calculate the current distance between the hero and the foe
+    local currentDistance = math.sqrt((hero.x - foe.x) ^ 2 + (hero.y - foe.y) ^ 2)
+
+    -- Calculate the speed of the foe
+    local foeSpeed = 1.0 -- Adjust the speed as needed
+
+    -- Calculate the time it will take for the hero to reach the current position of the foe
+    local timeToReachCurrentPosition = currentDistance / hero.speed
+
+    -- Predict the future position of the foe after a certain time
+    local futureX = foe.x + foeSpeed * timeToReachCurrentPosition * math.cos(math.atan2(hero.y - foe.y, hero.x - foe.x))
+    local futureY = foe.y + foeSpeed * timeToReachCurrentPosition * math.sin(math.atan2(hero.y - foe.y, hero.x - foe.x))
+
+    -- Determine the direction to move towards the predicted future position of the foe
+    local dx = futureX - hero.x
+    local dy = futureY - hero.y
 
     if math.abs(dx) > math.abs(dy) then
         return dx > 0 and "Right" or "Left"
