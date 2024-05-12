@@ -85,7 +85,7 @@ function predictFoeMovement(hero, foe)
     local currentDistance = math.sqrt((hero.x - foe.x) ^ 2 + (hero.y - foe.y) ^ 2)
 
     -- Calculate the speed of the foe
-    local foeSpeed = 1.0 -- Adjust the speed as needed
+    local foeSpeed = 1.0 
 
     -- Calculate the time it will take for the hero to reach the current position of the foe
     local timeToReachCurrentPosition = currentDistance / hero.speed
